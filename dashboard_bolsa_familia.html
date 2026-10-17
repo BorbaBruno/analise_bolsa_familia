@@ -22,12 +22,21 @@ header p{margin:0;color:#c9d9ee;font-size:14px}
 /* Filtros */
 .filtros{background:var(--card);border-radius:14px;padding:16px 20px;display:flex;flex-wrap:wrap;
   gap:14px;align-items:flex-end;box-shadow:0 8px 24px rgba(10,31,61,.12);border:1px solid var(--line)}
-.filtros label{display:flex;flex-direction:column;gap:6px;font-size:11px;font-weight:600;
+.filtros label,.filtros .lbl{display:flex;flex-direction:column;gap:6px;font-size:11px;font-weight:600;
   text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.combo{position:relative}
+.combo input{min-width:260px}
+.sug{position:absolute;top:100%;left:0;margin:4px 0 0;padding:4px;list-style:none;background:#fff;
+  border:1px solid var(--line);border-radius:10px;box-shadow:0 12px 28px rgba(10,31,61,.18);
+  min-width:100%;width:280px;max-height:260px;overflow-y:auto;z-index:50;display:none}
+.sug li{padding:8px 10px;border-radius:6px;font-size:13px;font-weight:500;cursor:pointer;
+  text-transform:none;letter-spacing:0;color:var(--ink)}
+.sug li.on,.sug li:hover{background:#eaf1fb;color:var(--blue)}
+.sug li.vazio{color:var(--muted);cursor:default;background:none}
 .filtros input,.filtros select{height:38px;min-width:170px;padding:0 12px;border:1px solid #cfd7e4;border-radius:8px;
   font-size:14px;color:var(--ink);background:#fff;outline:none;transition:border-color .15s, box-shadow .15s}
 .filtros input:focus,.filtros select:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(29,78,137,.15)}
-.filtros input.uf{min-width:110px;text-transform:uppercase}
+.filtros select#uf{min-width:120px}
 .acoes{margin-left:auto;display:flex;gap:10px}
 button{height:38px;padding:0 20px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;transition:all .15s}
 .btn-p{background:var(--blue);color:#fff;border:1px solid var(--blue)}
@@ -68,8 +77,11 @@ footer{margin-top:22px;font-size:12px;color:var(--muted);text-align:center;line-
 
 <div class="wrap">
   <form class="filtros" id="form" autocomplete="off">
-    <label>UF<input id="uf" class="uf" list="l_uf" placeholder="Todas" maxlength="2"></label>
-    <label>Município<input id="mun" list="l_mun" placeholder="Digite para pesquisar…"></label>
+    <label>UF<select id="uf"></select></label>
+    <div class="lbl combo">Município
+      <input id="mun" placeholder="Digite para pesquisar…" autocomplete="off">
+      <ul class="sug" id="sug"></ul>
+    </div>
     <label>Mês inicial<select id="m1"></select></label>
     <label>Mês final<select id="m2"></select></label>
     <div class="acoes">
@@ -77,7 +89,6 @@ footer{margin-top:22px;font-size:12px;color:var(--muted);text-align:center;line-
       <button type="submit" class="btn-p">Pesquisar</button>
     </div>
     <div class="status" id="status"></div>
-    <datalist id="l_uf"></datalist><datalist id="l_mun"></datalist>
   </form>
 
   <section class="kpis">
@@ -118,14 +129,52 @@ const meses = uniq(D.map(r=>r[0]));
 const ufs = uniq(D.map(r=>r[1]));
 
 function fillSel(sel, vals){ sel.innerHTML = vals.map(v=>`<option value="${v}">${mesLbl(v)}</option>`).join(''); }
-function fillList(dl, vals){ dl.innerHTML = vals.map(v=>`<option value="${v}">`).join(''); }
 fillSel($('m1'), meses); fillSel($('m2'), meses);
-fillList($('l_uf'), ufs);
+
+// UF como select
+$('uf').innerHTML = '<option value="">Todas</option>' + ufs.map(u=>`<option>${u}</option>`).join('');
+
+// Autocomplete de município
+// Obs.: o \u abaixo é intencional (TEMPLATE não é raw string)
+const norm = s => s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase();
+let munLista = [], sugIdx = -1, sugAtual = [];
 
 function atualizaMunicipios(){
-  const uf = $('uf').value.trim().toUpperCase();
-  fillList($('l_mun'), uniq(D.filter(r=>!uf||r[1]===uf).map(r=>r[2])));
+  const uf = $('uf').value;
+  munLista = uniq(D.filter(r=>!uf||r[1]===uf).map(r=>r[2]));
 }
+function abreSug(){
+  const q = norm($('mun').value.trim());
+  sugAtual = munLista.filter(m=>norm(m).includes(q))
+    .sort((a,b)=> (norm(b).startsWith(q)) - (norm(a).startsWith(q)))  // "começa com" primeiro
+    .slice(0,50);
+  sugIdx = -1;
+  $('sug').innerHTML = sugAtual.length
+    ? sugAtual.map((m,i)=>`<li data-i="${i}">${m}</li>`).join('')
+    : '<li class="vazio">Nenhum município encontrado</li>';
+  $('sug').style.display = 'block';
+}
+function fechaSug(){ $('sug').style.display = 'none'; }
+function escolhe(i){ $('mun').value = sugAtual[i]; fechaSug(); }
+function destaca(){
+  [...$('sug').children].forEach((li,i)=>li.classList.toggle('on', i===sugIdx));
+  const on = $('sug').children[sugIdx]; if (on) on.scrollIntoView({block:'nearest'});
+}
+
+$('mun').addEventListener('focus', abreSug);
+$('mun').addEventListener('input', abreSug);
+$('mun').addEventListener('blur', fechaSug);
+$('sug').addEventListener('mousedown', e=>{          // mousedown evita perder o foco antes do clique
+  e.preventDefault();
+  const li = e.target.closest('li[data-i]'); if (li) escolhe(+li.dataset.i);
+});
+$('mun').addEventListener('keydown', e=>{
+  const aberto = $('sug').style.display === 'block';
+  if (e.key === 'ArrowDown' && aberto){ e.preventDefault(); sugIdx = Math.min(sugIdx+1, sugAtual.length-1); destaca(); }
+  else if (e.key === 'ArrowUp' && aberto){ e.preventDefault(); sugIdx = Math.max(sugIdx-1, 0); destaca(); }
+  else if (e.key === 'Enter' && aberto && sugIdx >= 0){ e.preventDefault(); escolhe(sugIdx); }
+  else if (e.key === 'Escape'){ fechaSug(); }
+});
 function resetInputs(){
   $('uf').value=''; $('mun').value='';
   $('m1').value=meses[0]; $('m2').value=meses[meses.length-1];
@@ -155,18 +204,18 @@ const CFG = {displayModeBar:false, responsive:true};
 const merge = (a,b) => Object.assign({}, a, b);
 
 function pesquisar(){
-  const uf = $('uf').value.trim().toUpperCase(), mun = $('mun').value.trim().toUpperCase();
+  const uf = $('uf').value, mun = norm($('mun').value.trim());
   let a = $('m1').value, b = $('m2').value, aviso = '';
   if (a > b) { [a,b] = [b,a]; $('m1').value=a; $('m2').value=b; }
 
   const ufOk = !uf || ufs.includes(uf);
-  const munOk = !mun || D.some(r=>r[2].toUpperCase()===mun && (!uf||r[1]===uf));
+  const munOk = !mun || D.some(r=>norm(r[2])===mun && (!uf||r[1]===uf));
   if (!ufOk) aviso = `UF "${uf}" não encontrada.`;
   else if (!munOk) aviso = `Município "${mun}" não encontrado${uf?' em '+uf:''}.`;
 
-  const rows = (aviso) ? [] : D.filter(r=>(!uf||r[1]===uf)&&(!mun||r[2].toUpperCase()===mun)&&r[0]>=a&&r[0]<=b);
+  const rows = (aviso) ? [] : D.filter(r=>(!uf||r[1]===uf)&&(!mun||norm(r[2])===mun)&&r[0]>=a&&r[0]<=b);
   $('status').innerHTML = aviso ? `<span class="warn">${aviso}</span>` :
-    `Exibindo: <b>${uf||'Brasil'}</b> · <b>${mun||'todos os municípios'}</b> · <b>${mesLbl(a)}</b> a <b>${mesLbl(b)}</b>`;
+    `Exibindo: <b>${uf||'Brasil'}</b> · <b>${$('mun').value.trim()||'todos os municípios'}</b> · <b>${mesLbl(a)}</b> a <b>${mesLbl(b)}</b>`;
   render(rows);
 }
 
@@ -220,7 +269,7 @@ function render(rows){
        yaxis:merge(base.yaxis,{gridcolor:'rgba(0,0,0,0)',automargin:true})}), CFG);
 }
 
-$('uf').addEventListener('input', atualizaMunicipios);
+$('uf').addEventListener('change', ()=>{ $('mun').value=''; atualizaMunicipios(); });
 $('form').addEventListener('submit', e=>{e.preventDefault(); pesquisar();});
 $('limpar').addEventListener('click', ()=>{resetInputs(); pesquisar();});
 resetInputs(); pesquisar();
