@@ -65,6 +65,27 @@ button{height:38px;padding:0 20px;border-radius:8px;font-size:14px;font-weight:6
 .card p{margin:2px 0 8px;font-size:12.5px;color:var(--muted)}
 @keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 
+.chips{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:16px;font-size:13px;color:var(--muted)}
+.chips b{color:var(--navy);background:#e4edf9;padding:3px 10px;border-radius:999px}
+.chips button,.timeline button{height:30px;padding:0 12px;font-size:12px;width:auto}
+.timeline{margin:0 0 18px;background:var(--card);border:1px solid var(--line);border-radius:14px;
+  padding:12px 18px 10px;box-shadow:0 2px 8px rgba(10,31,61,.06)}
+.tl-top{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:12px;color:var(--muted);margin-bottom:6px}
+.tl-top b{color:var(--navy);font-size:13px}
+.tl-top #tlLbl{margin-right:auto;color:var(--ink);font-weight:600}
+.dual{position:relative;height:22px}
+.dual .trilho{position:absolute;left:9px;right:9px;top:9px;height:4px;border-radius:2px;background:#dbe3ef}
+.dual .faixa{position:absolute;top:9px;height:4px;border-radius:2px;background:var(--blue)}
+.dual input[type=range]{position:absolute;left:0;top:0;width:100%;height:22px;margin:0;padding:0;border:0;
+  background:none;-webkit-appearance:none;appearance:none;pointer-events:none;outline:none}
+.dual input[type=range]::-webkit-slider-runnable-track{background:none;height:22px}
+.dual input[type=range]::-moz-range-track{background:none}
+.dual input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;box-sizing:border-box;pointer-events:auto;
+  width:18px;height:18px;margin-top:2px;border-radius:50%;background:#fff;border:3px solid var(--blue);
+  cursor:grab;box-shadow:0 1px 4px rgba(10,31,61,.3)}
+.dual input[type=range]::-moz-range-thumb{box-sizing:border-box;pointer-events:auto;width:18px;height:18px;
+  border-radius:50%;background:#fff;border:3px solid var(--blue);cursor:grab}
+@media(max-width:640px){.timeline{padding:10px 12px}.chips{font-size:12px}}
 footer{margin-top:22px;font-size:12px;color:var(--muted);text-align:center;line-height:1.6}
 body{overflow-x:hidden}
 .card,.kpi{min-width:0}
@@ -117,6 +138,8 @@ body{overflow-x:hidden}
     <div class="status" id="status"></div>
   </form>
 
+  <div class="chips" id="chips"></div>
+
   <section class="kpis">
     <div class="kpi" style="--c:#1d4e89"><small>Valor total pago</small><b id="k1">-</b><span id="k1s"></span></div>
     <div class="kpi" style="--c:#0f9d8a"><small>Beneficiários (média mensal)</small><b id="k2">-</b><span>NIS únicos por mês</span></div>
@@ -124,8 +147,21 @@ body{overflow-x:hidden}
     <div class="kpi" style="--c:#d99a1e"><small>Ticket médio</small><b id="k4">-</b><span>Valor ÷ parcelas</span></div>
   </section>
 
+  <div class="timeline" id="timeline">
+    <div class="tl-top">
+      <b>Período exibido</b><span id="tlLbl"></span>
+      <button type="button" class="btn-s" id="tlUlt">Últimos 6</button>
+      <button type="button" class="btn-s" id="tlTodos">Ver tudo</button>
+    </div>
+    <div class="dual">
+      <div class="trilho"></div><div class="faixa" id="faixa"></div>
+      <input type="range" id="r1" min="0" max="0" value="0">
+      <input type="range" id="r2" min="0" max="0" value="0">
+    </div>
+  </div>
+
   <section class="grid">
-    <div class="card"><h3>Valor total por mês</h3><p>Evolução dos pagamentos no período</p><div id="g_mes"></div></div>
+    <div class="card"><h3>Valor total por mês</h3><p>Clique em um mês para filtrar os demais gráficos</p><div id="g_mes"></div></div>
     <div class="card"><h3>Beneficiários por mês</h3><p>NIS únicos atendidos mensalmente</p><div id="g_benef"></div></div>
     <div class="card"><h3>Ticket médio por mês</h3><p>Valor médio por parcela paga</p><div id="g_ticket"></div></div>
     <div class="card"><h3>Valor total por UF</h3><p>Distribuição regional dos pagamentos</p><div id="g_uf"></div></div>
@@ -220,7 +256,7 @@ function agrupa(rows, key){
 const base = {
   paper_bgcolor:'rgba(0,0,0,0)', plot_bgcolor:'rgba(0,0,0,0)',
   font:{family:'Inter, Segoe UI, Arial, sans-serif', size:12, color:C.txt},
-  margin:{t:10,l:70,r:20,b:50}, height:340, showlegend:false,
+  margin:{t:10,l:70,r:20,b:50}, height:340, showlegend:false, dragmode:false,
   hoverlabel:{bgcolor:C.navy, font:{color:'#fff', family:'Inter, Segoe UI, Arial'}, bordercolor:C.navy},
   xaxis:{showgrid:false, linecolor:'#cfd7e4', tickfont:{size:11}},
   yaxis:{gridcolor:C.grid, zeroline:false, tickfont:{size:11}}
@@ -239,17 +275,54 @@ const L = (extra={}) => {
 const CFG = {displayModeBar:false, responsive:true};
 const isMob = () => window.innerWidth <= 640;
 let ultimas = [];
+let selMes = null, selUF = null, ksAll = [], win = [0,0], resetWin = true;
+
+function atualizaFaixa(){
+  const n = ksAll.length, m = Math.max(1, n-1), a = win[0], b = win[1];
+  $('faixa').style.left  = `calc(9px + (100% - 18px) * ${a/m})`;
+  $('faixa').style.width = `calc((100% - 18px) * ${(b-a)/m})`;
+  $('tlLbl').textContent = n ? `${mesLbl(ksAll[a])} – ${mesLbl(ksAll[b])} · ${b-a+1} de ${n} meses` : '';
+}
+function configuraSlider(){
+  const n = ksAll.length;
+  ['r1','r2'].forEach(id=>{ $(id).min = 0; $(id).max = Math.max(0,n-1); $(id).disabled = n<2; });
+  $('r1').value = win[0]; $('r2').value = win[1];
+  atualizaFaixa();
+}
+function aplicaJanela(){
+  configuraSlider();
+  ['g_mes','g_benef','g_ticket'].forEach(id=>Plotly.relayout(id,{'xaxis.range':[win[0]-0.5, win[1]+0.5]}));
+}
+function onSlide(src){
+  let a = +$('r1').value, b = +$('r2').value;
+  if (a > b){ if (src==='r1') a = b; else b = a; }
+  win = [a,b]; aplicaJanela();
+}
+$('r1').addEventListener('input', ()=>onSlide('r1'));
+$('r2').addEventListener('input', ()=>onSlide('r2'));
+$('tlTodos').addEventListener('click', ()=>{ win = [0, Math.max(0,ksAll.length-1)]; aplicaJanela(); });
+$('tlUlt').addEventListener('click', ()=>{ const n = ksAll.length; win = [Math.max(0,n-JANELA), Math.max(0,n-1)]; aplicaJanela(); });
+
+// Filtro por clique (cross-filter): clicar de novo na mesma seleção remove o filtro
+function ligaEventos(){
+  const liga = (id, fn)=>{ const el = $(id); if (!el.on) return; el.removeAllListeners('plotly_click'); el.on('plotly_click', fn); };
+  const porMes = ev=>{ const k = ksAll[ev.points[0].pointNumber]; if (!k) return; selMes = (selMes===k) ? null : k; render(ultimas); };
+  ['g_mes','g_benef','g_ticket'].forEach(id=>liga(id, porMes));
+  liga('g_uf', ev=>{ const u = ev.points[0].x; selUF = (selUF===u) ? null : u; render(ultimas); });
+}
+$('chips').addEventListener('click', e=>{
+  if (e.target.id === 'limpaSel'){ selMes = null; selUF = null; render(ultimas); }
+});
 const merge = (a,b) => Object.assign({}, a, b);
 
 // Eixo mensal com barra de rolagem: abre nos últimos JANELA meses
 const JANELA = 6;
 function eixoMes(n){
-  const ax = merge(base.xaxis, {
-    type:'category', tickangle:0, automargin:true,
-    rangeslider:{visible:true, thickness:isMob()?0.14:0.1, bgcolor:'#eef1f6', bordercolor:'#cfd7e4', borderwidth:1}
+  // janela controlada pela barra única (win); eixo categórico usa índices
+  return merge(base.xaxis, {
+    type:'category', tickangle:'auto', automargin:true, fixedrange:true,
+    range:[win[0]-0.5, win[1]+0.5]
   });
-  if (n > JANELA) ax.range = [n-JANELA-0.5, n-0.5];   // eixo categórico usa índices
-  return ax;
 }
 
 function pesquisar(){
@@ -265,13 +338,24 @@ function pesquisar(){
   const rows = (aviso) ? [] : D.filter(r=>(!uf||r[1]===uf)&&(!mun||norm(r[2])===mun)&&r[0]>=a&&r[0]<=b);
   $('status').innerHTML = aviso ? `<span class="warn">${aviso}</span>` :
     `Exibindo: <b>${uf||'Brasil'}</b> · <b>${$('mun').value.trim()||'todos os municípios'}</b> · <b>${mesLbl(a)}</b> a <b>${mesLbl(b)}</b>`;
+  resetWin = true; selMes = null; selUF = null;
   render(rows);
 }
 
-function render(rows){
-  ultimas = rows;
+function render(base0){
+  ultimas = base0;
   const mob = isMob();
-  const hGraf = mob ? 330 : 400;   // espaço extra para a barra de rolagem
+  ksAll = uniq(base0.map(r=>r[0]));
+  if (selMes && !ksAll.includes(selMes)) selMes = null;
+  // Cada visual ignora o próprio filtro (destaca em vez de filtrar), como no Power BI
+  const rowsMes = base0.filter(r=>!selUF  || r[1]===selUF);                         // gráficos mensais
+  const rowsUF  = base0.filter(r=>!selMes || r[0]===selMes);                        // gráfico de UF
+  const rows    = base0.filter(r=>(!selUF||r[1]===selUF) && (!selMes||r[0]===selMes)); // KPIs e Top 15
+  const nk = Math.max(0, ksAll.length-1);
+  if (resetWin){ win = [Math.max(0,ksAll.length-JANELA), nk]; resetWin = false; }
+  win = [Math.min(win[0],nk), Math.min(win[1],nk)];
+  configuraSlider();
+  const hGraf = mob ? 270 : 320;
   const short = k => { if (!mob) return k; const [n,u] = k.split(' / '); return (n.length>13 ? n.slice(0,12)+'…' : n) + ' / ' + u; };
   const nMeses = uniq(rows.map(r=>r[0])).length || 1;
   const valor = rows.reduce((s,r)=>s+r[3],0);
@@ -284,28 +368,29 @@ function render(rows){
   $('k4').textContent = parc ? brl(valor/parc) : '-';
 
   // Mês
-  const pm = agrupa(rows, r=>r[0]), ks = Object.keys(pm).sort(), lb = ks.map(mesLbl);
-  Plotly.react('g_mes',[{x:lb,y:ks.map(k=>pm[k].valor),type:'bar',marker:{color:C.blue},
+  const pm = agrupa(rowsMes, r=>r[0]), ks = ksAll, lb = ks.map(mesLbl);
+  ks.forEach(k=>{ pm[k] = pm[k] || {valor:0,parc:0,benef:0}; });
+  Plotly.react('g_mes',[{x:lb,y:ks.map(k=>pm[k].valor),type:'bar',marker:{color:ks.map(k=>(!selMes||k===selMes)?C.blue:'#b9c8de')},
     text:ks.map(k=>compact(pm[k].valor)),textposition:mob?'none':'outside',cliponaxis:false,textfont:{size:11},
     hovertemplate:'<b>%{x}</b><br>Valor: %{text}<extra></extra>'}],
     L({yaxis:merge(base.yaxis,{tickformat:'~s'}), xaxis:eixoMes(ks.length), height:hGraf, margin:{t:30,l:55,r:20,b:50}}), CFG);
 
   Plotly.react('g_benef',[{x:lb,y:ks.map(k=>pm[k].benef),type:'scatter',mode:'lines+markers',
-    line:{color:C.teal,width:3,shape:'spline'},marker:{size:8,color:'#fff',line:{color:C.teal,width:2.5}},
+    line:{color:C.teal,width:3,shape:'spline'},marker:{size:ks.map(k=>k===selMes?14:8),color:ks.map(k=>k===selMes?C.teal:'#fff'),line:{color:C.teal,width:2.5}},
     fill:'tozeroy',fillcolor:'rgba(15,157,138,.12)',
     hovertemplate:'<b>%{x}</b><br>Beneficiários: %{y:,.0f}<extra></extra>'}],
     L({xaxis:eixoMes(ks.length), yaxis:merge(base.yaxis,{tickformat:'~s',rangemode:'tozero'}), height:hGraf, margin:{t:30,l:55,r:20,b:50}}), CFG);
 
   Plotly.react('g_ticket',[{x:lb,y:ks.map(k=>pm[k].parc?pm[k].valor/pm[k].parc:0),type:'scatter',mode:'lines+markers+text',
-    line:{color:C.gold,width:3,shape:'spline'},marker:{size:8,color:'#fff',line:{color:C.gold,width:2.5}},
+    line:{color:C.gold,width:3,shape:'spline'},marker:{size:ks.map(k=>k===selMes?14:8),color:ks.map(k=>k===selMes?C.gold:'#fff'),line:{color:C.gold,width:2.5}},
     text:ks.map(k=>pm[k].parc?brl(pm[k].valor/pm[k].parc):''),textposition:mob?'none':'top center',textfont:{size:11},
     hovertemplate:'<b>%{x}</b><br>Ticket médio: %{y:,.2f}<extra></extra>'}],
     L({xaxis:eixoMes(ks.length), yaxis:merge(base.yaxis,{tickprefix:'R$ '}), height:hGraf, margin:{t:30,l:70,r:30,b:50}}), CFG);
 
   // UF
-  const pu = agrupa(rows, r=>r[1]), ku = Object.keys(pu).sort((x,y)=>pu[y].valor-pu[x].valor);
+  const pu = agrupa(rowsUF, r=>r[1]), ku = Object.keys(pu).sort((x,y)=>pu[y].valor-pu[x].valor);
   Plotly.react('g_uf',[{x:ku,y:ku.map(k=>pu[k].valor),type:'bar',
-    marker:{color:ku.map((k,i)=>i===0?C.navy:C.blue),opacity:.92},
+    marker:{color:ku.map((k,i)=>selUF ? (k===selUF?C.navy:'#b9c8de') : (i===0?C.navy:C.blue)),opacity:.92},
     customdata:ku.map(k=>[compact(pu[k].valor), pu[k].parc?brl(pu[k].valor/pu[k].parc):'-']),
     hovertemplate:'<b>%{x}</b><br>Valor: %{customdata[0]}<br>Ticket médio: %{customdata[1]}<extra></extra>'}],
     L({yaxis:merge(base.yaxis,{tickformat:'~s'}), xaxis:merge(base.xaxis,{type:'category',tickmode:'array',tickvals:ku,ticktext:ku,tickangle:mob?-90:'auto',tickfont:{size:mob?9:11}}), margin:{t:30,l:55,r:20,b:mob?44:50}}), CFG);
@@ -320,6 +405,12 @@ function render(rows){
     L({height:mob?480:520, margin:{t:10,l:mob?10:210,r:mob?68:90,b:40},
        xaxis:merge(base.xaxis,{showgrid:true,gridcolor:C.grid,tickformat:'~s',nticks:mob?4:10}),
        yaxis:merge(base.yaxis,{gridcolor:'rgba(0,0,0,0)',automargin:true,tickmode:'array',tickvals:kn,ticktext:kn.map(short),tickfont:{size:mob?10:11}})}), CFG);
+
+  const sel = [selMes && `<b>${mesLbl(selMes)}</b>`, selUF && `<b>${selUF}</b>`].filter(Boolean);
+  $('chips').innerHTML = sel.length
+    ? `Filtro por clique: ${sel.join(' ')} <button type="button" class="btn-s" id="limpaSel">Limpar seleção</button>`
+    : 'Dica: clique em um mês ou em uma UF para filtrar os demais gráficos.';
+  setTimeout(ligaEventos, 0);
 }
 
 $('uf').addEventListener('change', ()=>{ $('mun').value=''; atualizaMunicipios(); });
