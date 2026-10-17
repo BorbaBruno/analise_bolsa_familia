@@ -1,0 +1,26 @@
+# Dados (grandes demais para o Git)
+*.parquet
+*.csv
+*.zip
+data/
+
+# DuckDB
+duckdb_tmp/
+*.duckdb
+*.duckdb.wal
+
+# Saída local do script (a versão publicada fica em docs/)
+dashboard_bolsa_familia.html
+
+# Python
+__pycache__/
+*.py[cod]
+.venv*/
+venv/
+.ipynb_checkpoints/
+
+# IDE / SO
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
