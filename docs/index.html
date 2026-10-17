@@ -241,6 +241,17 @@ const isMob = () => window.innerWidth <= 640;
 let ultimas = [];
 const merge = (a,b) => Object.assign({}, a, b);
 
+// Eixo mensal com barra de rolagem: abre nos últimos JANELA meses
+const JANELA = 6;
+function eixoMes(n){
+  const ax = merge(base.xaxis, {
+    type:'category', tickangle:0, automargin:true,
+    rangeslider:{visible:true, thickness:isMob()?0.14:0.1, bgcolor:'#eef1f6', bordercolor:'#cfd7e4', borderwidth:1}
+  });
+  if (n > JANELA) ax.range = [n-JANELA-0.5, n-0.5];   // eixo categórico usa índices
+  return ax;
+}
+
 function pesquisar(){
   const uf = $('uf').value, mun = norm($('mun').value.trim());
   let a = $('m1').value, b = $('m2').value, aviso = '';
@@ -260,6 +271,7 @@ function pesquisar(){
 function render(rows){
   ultimas = rows;
   const mob = isMob();
+  const hGraf = mob ? 330 : 400;   // espaço extra para a barra de rolagem
   const short = k => { if (!mob) return k; const [n,u] = k.split(' / '); return (n.length>13 ? n.slice(0,12)+'…' : n) + ' / ' + u; };
   const nMeses = uniq(rows.map(r=>r[0])).length || 1;
   const valor = rows.reduce((s,r)=>s+r[3],0);
@@ -276,19 +288,19 @@ function render(rows){
   Plotly.react('g_mes',[{x:lb,y:ks.map(k=>pm[k].valor),type:'bar',marker:{color:C.blue},
     text:ks.map(k=>compact(pm[k].valor)),textposition:mob?'none':'outside',cliponaxis:false,textfont:{size:11},
     hovertemplate:'<b>%{x}</b><br>Valor: %{text}<extra></extra>'}],
-    L({yaxis:merge(base.yaxis,{tickformat:'~s'}), xaxis:merge(base.xaxis,{type:'category'}), margin:{t:30,l:55,r:20,b:50}}), CFG);
+    L({yaxis:merge(base.yaxis,{tickformat:'~s'}), xaxis:eixoMes(ks.length), height:hGraf, margin:{t:30,l:55,r:20,b:50}}), CFG);
 
   Plotly.react('g_benef',[{x:lb,y:ks.map(k=>pm[k].benef),type:'scatter',mode:'lines+markers',
     line:{color:C.teal,width:3,shape:'spline'},marker:{size:8,color:'#fff',line:{color:C.teal,width:2.5}},
     fill:'tozeroy',fillcolor:'rgba(15,157,138,.12)',
     hovertemplate:'<b>%{x}</b><br>Beneficiários: %{y:,.0f}<extra></extra>'}],
-    L({xaxis:merge(base.xaxis,{type:'category'}), yaxis:merge(base.yaxis,{tickformat:'~s',rangemode:'tozero'}), margin:{t:30,l:55,r:20,b:50}}), CFG);
+    L({xaxis:eixoMes(ks.length), yaxis:merge(base.yaxis,{tickformat:'~s',rangemode:'tozero'}), height:hGraf, margin:{t:30,l:55,r:20,b:50}}), CFG);
 
   Plotly.react('g_ticket',[{x:lb,y:ks.map(k=>pm[k].parc?pm[k].valor/pm[k].parc:0),type:'scatter',mode:'lines+markers+text',
     line:{color:C.gold,width:3,shape:'spline'},marker:{size:8,color:'#fff',line:{color:C.gold,width:2.5}},
     text:ks.map(k=>pm[k].parc?brl(pm[k].valor/pm[k].parc):''),textposition:mob?'none':'top center',textfont:{size:11},
     hovertemplate:'<b>%{x}</b><br>Ticket médio: %{y:,.2f}<extra></extra>'}],
-    L({xaxis:merge(base.xaxis,{type:'category'}), yaxis:merge(base.yaxis,{tickprefix:'R$ '}), margin:{t:30,l:70,r:30,b:50}}), CFG);
+    L({xaxis:eixoMes(ks.length), yaxis:merge(base.yaxis,{tickprefix:'R$ '}), height:hGraf, margin:{t:30,l:70,r:30,b:50}}), CFG);
 
   // UF
   const pu = agrupa(rows, r=>r[1]), ku = Object.keys(pu).sort((x,y)=>pu[y].valor-pu[x].valor);
